@@ -3,470 +3,688 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>MobileTwixtor</title>
+<title>AspTwixtor | Ten Shadows</title>
 
 <style>
-body {
-    background: #101010;
-    color: white;
-    font-family: Arial, sans-serif;
-    padding: 20px;
-    max-width: 500px;
-    margin: auto;
+* {
+    box-sizing: border-box;
 }
 
-button, select, input {
-    box-sizing: border-box;
-    width: 100%;
-    padding: 14px;
+body {
+    margin: 0;
+    background: radial-gradient(
+        ellipse at top,
+        #253653,
+        #090e19 65%
+    );
+    color: #dce6fa;
+    font-family: system-ui, sans-serif;
+    min-height: 100vh;
+}
+
+main {
+    max-width: 540px;
+    margin: auto;
+    padding: 28px 18px;
+}
+
+header {
+    border-bottom: 1px solid #34445d;
+    margin-bottom: 24px;
+}
+
+h1 {
+    font-size: 36px;
+    letter-spacing: -2px;
     margin: 8px 0;
-    background: #222;
-    color: white;
-    border: 1px solid #444;
-    border-radius: 10px;
+}
+
+small {
+    letter-spacing: 4px;
+    color: #9eb5dc;
+}
+
+section {
+    background: #101827;
+    border: 1px solid #34445d;
+    border-radius: 18px;
+    padding: 18px;
+    box-shadow: 0 16px 40px #0006;
+}
+
+label {
+    display: block;
+    margin-top: 16px;
+    color: #aabbd5;
+}
+
+input, select, button, a {
+    font: inherit;
+    color: inherit;
+}
+
+input, select, button {
+    width: 100%;
+    padding: 13px;
+    background: #19263b;
+    border: 1px solid #405675;
+    border-radius: 9px;
+    margin-top: 6px;
 }
 
 button {
-    background: #7047eb;
+    background: #344e79;
     font-weight: bold;
+    margin-top: 22px;
 }
 
-canvas, video {
+button:disabled {
+    opacity: 0.5;
+}
+
+video, canvas {
     width: 100%;
+    max-height: 320px;
+    background: #050810;
     border-radius: 10px;
-    background: black;
+    margin-top: 12px;
 }
 
 progress {
     width: 100%;
+    accent-color: #819fd0;
+    margin-top: 18px;
+}
+
+a {
+    display: block;
+    text-align: center;
+    padding: 14px;
+    background: #344e79;
+    border-radius: 9px;
+    text-decoration: none;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+p {
+    color: #9eb0cc;
+    font-size: 13px;
+    line-height: 1.5;
 }
 </style>
 </head>
 
 <body>
 
-<h1>MobileTwixtor</h1>
-<p>Mobile GPU Frame Interpolation</p>
+<main>
 
-<input type="file" id="upload" accept="video/*">
+<header>
+    <small>十種影法術 / TEN SHADOWS</small>
+    <h1>AspTwixtor</h1>
+    <p>SHADOW FRAME ENGINE · GPU</p>
+</header>
 
-<video id="video" playsinline muted></video>
+<section>
 
-<label>Original FPS</label>
-<select id="sourceFPS">
-    <option value="24">24 FPS</option>
-    <option value="30" selected>30 FPS</option>
-    <option value="60">60 FPS</option>
+<label>Source Clip</label>
+<input id="file" type="file" accept="video/*">
+
+<video id="v" muted playsinline controls></video>
+
+<label>Source FPS</label>
+<select id="src">
+    <option>24</option>
+    <option selected>30</option>
+    <option>60</option>
+    <option>120</option>
+    <option>240</option>
 </select>
 
-<label>Interpolation</label>
-<select id="multiplier">
-    <option value="2">2x</option>
-    <option value="4">4x</option>
-    <option value="8">8x</option>
+<label>Output FPS</label>
+<select id="fps">
+    <option>30</option>
+    <option>60</option>
+    <option>90</option>
+    <option selected>120</option>
+    <option>144</option>
+    <option>240</option>
 </select>
 
-<button id="convert">Convert Video</button>
+<label>Playback Speed</label>
+<select id="speed">
+    <option value="1">100%</option>
+    <option value="0.5">50%</option>
+    <option value="0.25">25%</option>
+    <option value="0.125">12.5%</option>
+</select>
 
-<progress id="progress" value="0" max="100"></progress>
-<p id="status">Waiting for video...</p>
+<button id="go">Summon Frames</button>
 
-<canvas id="output"></canvas>
+<progress id="p" max="1" value="0"></progress>
 
-<a id="download" hidden>Save Video</a>
+<p id="status">Choose a short clip.</p>
 
-<script>
-const video = document.getElementById("video");
-const canvas = document.getElementById("output");
-const status = document.getElementById("status");
-const progress = document.getElementById("progress");
-const button = document.getElementById("convert");
+<canvas id="c"></canvas>
 
-let inputURL;
+<a id="save" hidden>Save MP4</a>
 
-document.getElementById("upload").onchange = e => {
-    const file = e.target.files[0];
-    if (!file) return;
+<p>
+    Experimental GPU frame interpolation.
+    Silent export. Maximum 720p.
+    High FPS depends on device encoder support.
+</p>
 
-    if (inputURL) URL.revokeObjectURL(inputURL);
-    inputURL = URL.createObjectURL(file);
+</section>
 
-    video.src = inputURL;
-    status.textContent = "Video loaded";
+</main>
+
+<script type="module">
+
+import {
+    Muxer,
+    ArrayBufferTarget
+} from 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/+esm';
+
+const $ = id => document.getElementById(id);
+
+const v = $('v');
+const c = $('c');
+const s = $('status');
+
+let url;
+let output;
+
+$('file').onchange = () => {
+
+    if (url) URL.revokeObjectURL(url);
+
+    if (!$('file').files[0]) return;
+
+    v.src = url = URL.createObjectURL(
+        $('file').files[0]
+    );
+
+    $('save').hidden = true;
+    s.textContent = 'Clip loaded.';
 };
 
-const shader = `
-@group(0) @binding(0)
-var frameA: texture_2d<f32>;
+function seek(t) {
 
-@group(0) @binding(1)
-var frameB: texture_2d<f32>;
-
-@group(0) @binding(2)
-var frameSampler: sampler;
-
-@group(0) @binding(3)
-var<uniform> amount: f32;
-
-struct VertexOutput {
-    @builtin(position) position: vec4f,
-    @location(0) uv: vec2f
-}
-
-@vertex
-fn vertexMain(
-    @builtin(vertex_index) index: u32
-) -> VertexOutput {
-
-    var positions = array<vec2f, 3>(
-        vec2f(-1.0, -1.0),
-        vec2f(3.0, -1.0),
-        vec2f(-1.0, 3.0)
-    );
-
-    let p = positions[index];
-
-    var output: VertexOutput;
-    output.position = vec4f(p, 0.0, 1.0);
-    output.uv = vec2f(
-        (p.x + 1.0) * 0.5,
-        (1.0 - p.y) * 0.5
-    );
-
-    return output;
-}
-
-@fragment
-fn fragmentMain(
-    input: VertexOutput
-) -> @location(0) vec4f {
-
-    let a = textureSample(
-        frameA, frameSampler, input.uv
-    );
-
-    let b = textureSample(
-        frameB, frameSampler, input.uv
-    );
-
-    return mix(a, b, amount);
-}
-`;
-
-function seek(time) {
     return new Promise((resolve, reject) => {
+
         if (
-            Math.abs(video.currentTime - time) < 0.0001 &&
-            video.readyState >= 2
+            Math.abs(v.currentTime - t) < 0.00001 &&
+            v.readyState >= 2
         ) {
-            resolve();
-            return;
+            return resolve();
         }
 
-        const timeout = setTimeout(() => {
-            video.removeEventListener("seeked", done);
-            reject(new Error("Video seek timed out"));
+        let timer = setTimeout(() => {
+            v.removeEventListener('seeked', done);
+            reject(Error('Seek timeout'));
         }, 10000);
 
         function done() {
-            clearTimeout(timeout);
+            clearTimeout(timer);
             resolve();
         }
 
-        video.addEventListener(
-            "seeked", done, { once: true }
+        v.addEventListener(
+            'seeked',
+            done,
+            { once: true }
         );
 
-        video.currentTime = time;
+        v.currentTime = t;
     });
 }
 
-const wait = ms => new Promise(
-    resolve => setTimeout(resolve, ms)
-);
+$('go').onclick = async () => {
 
-async function convert() {
-    if (!navigator.gpu) {
-        status.textContent = "WebGPU is not supported.";
-        return;
-    }
+    let d;
+    let enc;
+    let ctx;
 
-    if (!video.videoWidth) {
-        status.textContent = "Load a video first.";
-        return;
-    }
-
-    if (!window.MediaRecorder || !canvas.captureStream) {
-        status.textContent = "Video export is not supported.";
-        return;
-    }
-
-    button.disabled = true;
-
-    let device;
-    let recorder;
-    let stream;
+    $('go').disabled = true;
+    $('file').disabled = true;
+    $('save').hidden = true;
+    $('p').value = 0;
 
     try {
-        video.pause();
 
-        status.textContent = "Starting GPU...";
-
-        const adapter = await navigator.gpu.requestAdapter();
-
-        if (!adapter) {
-            throw new Error("GPU unavailable");
+        if (!navigator.gpu || !window.VideoEncoder) {
+            throw Error(
+                'WebGPU and WebCodecs are required. Update iOS and use Safari.'
+            );
         }
 
-        device = await adapter.requestDevice();
+        if (
+            !v.videoWidth ||
+            !Number.isFinite(v.duration)
+        ) {
+            throw Error('Load a clip first.');
+        }
 
-        // Limit resolution to reduce memory usage.
-        const scale = Math.min(
-            1, 1280 / Math.max(
-                video.videoWidth,
-                video.videoHeight
+        v.pause();
+
+        const fps = +$('fps').value;
+        const src = +$('src').value;
+        const speed = +$('speed').value;
+
+        s.textContent = 'Initializing Shadow Engine...';
+
+        let scale = Math.min(
+            1,
+            1280 / Math.max(
+                v.videoWidth,
+                v.videoHeight
+            ),
+            720 / Math.min(
+                v.videoWidth,
+                v.videoHeight
             )
         );
 
-        canvas.width = Math.max(
-            2, Math.floor(video.videoWidth * scale / 2) * 2
+        c.width = Math.max(
+            2,
+            Math.floor(v.videoWidth * scale / 2) * 2
         );
 
-        canvas.height = Math.max(
-            2, Math.floor(video.videoHeight * scale / 2) * 2
+        c.height = Math.max(
+            2,
+            Math.floor(v.videoHeight * scale / 2) * 2
         );
 
-        const context = canvas.getContext("webgpu");
-        const format = navigator.gpu.getPreferredCanvasFormat();
+        let w = c.width;
+        let h = c.height;
 
-        context.configure({
-            device,
-            format,
-            alphaMode: "opaque"
+        let cfg = {
+            codec: 'avc1.640034',
+            width: w,
+            height: h,
+            bitrate: Math.min(
+                40000000,
+                Math.round(w * h * fps * 0.15)
+            ),
+            framerate: fps,
+            avc: {
+                format: 'avc'
+            },
+            hardwareAcceleration: 'prefer-hardware'
+        };
+
+        const supported =
+            await VideoEncoder.isConfigSupported(cfg);
+
+        if (!supported.supported) {
+            throw Error(
+                'Encoder does not support this FPS or resolution. Try a lower FPS.'
+            );
+        }
+
+        let adapter =
+            await navigator.gpu.requestAdapter();
+
+        if (!adapter) {
+            throw Error('GPU unavailable.');
+        }
+
+        d = await adapter.requestDevice();
+
+        ctx = c.getContext('webgpu');
+
+        let fmt =
+            navigator.gpu.getPreferredCanvasFormat();
+
+        ctx.configure({
+            device: d,
+            format: fmt,
+            alphaMode: 'opaque'
         });
 
-        const module = device.createShaderModule({
-            code: shader
+        // GPU shader
+
+        let mod = d.createShaderModule({
+
+            code: `
+
+            @group(0) @binding(0)
+            var a: texture_2d<f32>;
+
+            @group(0) @binding(1)
+            var b: texture_2d<f32>;
+
+            @group(0) @binding(2)
+            var sm: sampler;
+
+            @group(0) @binding(3)
+            var<uniform> t: f32;
+
+            struct O {
+                @builtin(position) p: vec4f,
+                @location(0) uv: vec2f
+            };
+
+            @vertex
+            fn vs(
+                @builtin(vertex_index) i: u32
+            ) -> O {
+
+                var ps = array<vec2f, 3>(
+                    vec2f(-1, -1),
+                    vec2f(3, -1),
+                    vec2f(-1, 3)
+                );
+
+                let p = ps[i];
+
+                return O(
+                    vec4f(p, 0, 1),
+                    vec2f(
+                        (p.x + 1) * 0.5,
+                        (1 - p.y) * 0.5
+                    )
+                );
+            }
+
+            @fragment
+            fn fs(o: O) -> @location(0) vec4f {
+
+                let frameA = textureSample(
+                    a, sm, o.uv
+                );
+
+                let frameB = textureSample(
+                    b, sm, o.uv
+                );
+
+                return mix(frameA, frameB, t);
+            }
+
+            `
         });
 
-        const pipeline = device.createRenderPipeline({
-            layout: "auto",
+        let pipe = d.createRenderPipeline({
+
+            layout: 'auto',
+
             vertex: {
-                module,
-                entryPoint: "vertexMain"
+                module: mod,
+                entryPoint: 'vs'
             },
+
             fragment: {
-                module,
-                entryPoint: "fragmentMain",
-                targets: [{ format }]
-            },
-            primitive: {
-                topology: "triangle-list"
+                module: mod,
+                entryPoint: 'fs',
+                targets: [{ format: fmt }]
             }
         });
 
-        const textureSize = [
-            video.videoWidth,
-            video.videoHeight
+        let size = [
+            v.videoWidth,
+            v.videoHeight
         ];
 
-        function createTexture() {
-            return device.createTexture({
-                size: textureSize,
-                format: "rgba8unorm",
-                usage:
-                    GPUTextureUsage.TEXTURE_BINDING |
-                    GPUTextureUsage.COPY_DST |
-                    GPUTextureUsage.RENDER_ATTACHMENT
-            });
-        }
+        let tex = () => d.createTexture({
 
-        const frameA = createTexture();
-        const frameB = createTexture();
+            size,
 
-        const sampler = device.createSampler({
-            magFilter: "linear",
-            minFilter: "linear"
+            format: 'rgba8unorm',
+
+            usage:
+                GPUTextureUsage.TEXTURE_BINDING |
+                GPUTextureUsage.COPY_DST |
+                GPUTextureUsage.RENDER_ATTACHMENT
         });
 
-        const uniform = device.createBuffer({
+        let a = tex();
+        let b = tex();
+
+        let u = d.createBuffer({
+
             size: 16,
+
             usage:
                 GPUBufferUsage.UNIFORM |
                 GPUBufferUsage.COPY_DST
         });
 
-        const bindGroup = device.createBindGroup({
-            layout: pipeline.getBindGroupLayout(0),
+        let bg = d.createBindGroup({
+
+            layout: pipe.getBindGroupLayout(0),
+
             entries: [
+
                 {
                     binding: 0,
-                    resource: frameA.createView()
+                    resource: a.createView()
                 },
+
                 {
                     binding: 1,
-                    resource: frameB.createView()
+                    resource: b.createView()
                 },
+
                 {
                     binding: 2,
-                    resource: sampler
+                    resource: d.createSampler({
+                        minFilter: 'linear',
+                        magFilter: 'linear'
+                    })
                 },
+
                 {
                     binding: 3,
-                    resource: { buffer: uniform }
+                    resource: {
+                        buffer: u
+                    }
                 }
             ]
         });
 
-        function render(amount) {
-            device.queue.writeBuffer(
-                uniform, 0, new Float32Array([amount])
+        // MP4 export engine
+
+        let mux = new Muxer({
+
+            target: new ArrayBufferTarget(),
+
+            video: {
+                codec: 'avc',
+                width: w,
+                height: h,
+                frameRate: fps
+            },
+
+            fastStart: 'in-memory'
+        });
+
+        let failure;
+
+        enc = new VideoEncoder({
+
+            output: (chunk, meta) => {
+                mux.addVideoChunk(chunk, meta);
+            },
+
+            error: e => {
+                failure = e;
+            }
+        });
+
+        enc.configure(cfg);
+
+        let count = Math.ceil(
+            v.duration / speed * fps
+        );
+
+        if (count > 14400) {
+            throw Error(
+                'Clip too long. Use a shorter clip.'
+            );
+        }
+
+        let last = -1;
+
+        // Generate frames
+
+        for (let i = 0; i < count; i++) {
+
+            if (failure) throw failure;
+
+            let pos = i / fps * speed * src;
+            let k = Math.floor(pos);
+
+            if (k !== last) {
+
+                for (
+                    let [n, texture] of [
+                        [k, a],
+                        [k + 1, b]
+                    ]
+                ) {
+
+                    await seek(
+                        Math.min(
+                            n / src,
+                            Math.max(
+                                0,
+                                v.duration - 0.001
+                            )
+                        )
+                    );
+
+                    d.queue.copyExternalImageToTexture(
+                        { source: v },
+                        { texture },
+                        size
+                    );
+                }
+
+                last = k;
+            }
+
+            d.queue.writeBuffer(
+                u,
+                0,
+                new Float32Array([pos - k])
             );
 
-            const encoder = device.createCommandEncoder();
+            let cmd = d.createCommandEncoder();
 
-            const pass = encoder.beginRenderPass({
+            let pass = cmd.beginRenderPass({
+
                 colorAttachments: [{
-                    view: context.getCurrentTexture().createView(),
-                    loadOp: "clear",
-                    storeOp: "store",
+
+                    view: ctx
+                        .getCurrentTexture()
+                        .createView(),
+
+                    loadOp: 'clear',
+
+                    storeOp: 'store',
+
                     clearValue: [0, 0, 0, 1]
                 }]
             });
 
-            pass.setPipeline(pipeline);
-            pass.setBindGroup(0, bindGroup);
+            pass.setPipeline(pipe);
+            pass.setBindGroup(0, bg);
             pass.draw(3);
             pass.end();
 
-            device.queue.submit([encoder.finish()]);
-        }
+            d.queue.submit([cmd.finish()]);
 
-        function copyFrame(texture) {
-            device.queue.copyExternalImageToTexture(
-                { source: video },
-                { texture },
-                textureSize
+            await d.queue.onSubmittedWorkDone();
+
+            let timestamp = Math.round(
+                i * 1000000 / fps
             );
-        }
 
-        const fps = Number(
-            document.getElementById("sourceFPS").value
-        );
+            let duration = Math.round(
+                (i + 1) * 1000000 / fps
+            ) - timestamp;
 
-        const multiplier = Number(
-            document.getElementById("multiplier").value
-        );
+            let frame = new VideoFrame(c, {
+                timestamp,
+                duration
+            });
 
-        const total = Math.max(
-            1, Math.ceil(video.duration * fps)
-        );
+            enc.encode(frame, {
+                keyFrame:
+                    i % Math.round(fps * 2) === 0
+            });
 
-        // Keep playback at the original FPS
-        // to create slow motion.
-        stream = canvas.captureStream(fps);
+            frame.close();
 
-        const mimeType = [
-            "video/mp4",
-            "video/webm;codecs=vp8",
-            "video/webm"
-        ].find(type =>
-            MediaRecorder.isTypeSupported(type)
-        );
-
-        recorder = mimeType
-            ? new MediaRecorder(stream, { mimeType })
-            : new MediaRecorder(stream);
-
-        const chunks = [];
-
-        recorder.ondataavailable = e => {
-            if (e.data.size) chunks.push(e.data);
-        };
-
-        const finished = new Promise(resolve => {
-            recorder.onstop = resolve;
-        });
-
-        await seek(0);
-        copyFrame(frameA);
-        copyFrame(frameB);
-        render(0);
-
-        recorder.start();
-
-        for (let i = 0; i < total; i++) {
-
-            await seek(Math.min(
-                i / fps,
-                Math.max(0, video.duration - 0.001)
-            ));
-
-            copyFrame(frameA);
-
-            await seek(Math.min(
-                (i + 1) / fps,
-                Math.max(0, video.duration - 0.001)
-            ));
-
-            copyFrame(frameB);
-
-            for (let j = 0; j < multiplier; j++) {
-                render(j / multiplier);
-
-                await device.queue.onSubmittedWorkDone();
-
-                await wait(1000 / fps);
+            if (enc.encodeQueueSize > 8) {
+                await enc.flush();
             }
 
-            progress.value = (i + 1) / total * 100;
+            $('p').value = (i + 1) / count;
 
-            status.textContent =
-                "Processing: " +
-                Math.round(progress.value) + "%";
+            s.textContent =
+                `Summoning frames ${i + 1}/${count}` +
+                ` · ${fps} FPS`;
+
+            if (i % 8 === 0) {
+                await new Promise(
+                    resolve => setTimeout(resolve, 0)
+                );
+            }
         }
 
-        recorder.stop();
-        await finished;
+        s.textContent = 'Finalizing MP4...';
 
-        const type = recorder.mimeType || "video/webm";
-        const blob = new Blob(chunks, { type });
+        await enc.flush();
 
-        const download = document.getElementById("download");
+        if (failure) throw failure;
 
-        if (download.href.startsWith("blob:")) {
-            URL.revokeObjectURL(download.href);
+        mux.finalize();
+
+        if (output) {
+            URL.revokeObjectURL(output);
         }
 
-        download.href = URL.createObjectURL(blob);
+        output = URL.createObjectURL(
 
-        download.download = type.includes("mp4")
-            ? "MobileTwixtor.mp4"
-            : "MobileTwixtor.webm";
+            new Blob(
+                [mux.target.buffer],
+                { type: 'video/mp4' }
+            )
+        );
 
-        download.hidden = false;
+        $('save').href = output;
 
-        status.textContent = "Conversion complete!";
+        $('save').download =
+            `AspTwixtor-${fps}fps.mp4`;
 
-    } catch (error) {
-        status.textContent = "Error: " + error.message;
+        $('save').hidden = false;
+
+        s.textContent =
+            'Ten Shadows — Conversion Complete.';
+
+    } catch (e) {
+
+        s.textContent = 'Error: ' + e.message;
 
     } finally {
-        if (recorder && recorder.state !== "inactive") {
-            recorder.stop();
+
+        if (enc && enc.state !== 'closed') {
+            enc.close();
         }
 
-        if (stream) {
-            stream.getTracks().forEach(track => track.stop());
-        }
+        if (ctx) ctx.unconfigure();
 
-        if (device) device.destroy();
+        if (d) d.destroy();
 
-        button.disabled = false;
+        $('go').disabled = false;
+        $('file').disabled = false;
     }
-}
+};
 
-button.onclick = convert;
 </script>
 
 </body>
